@@ -1,0 +1,70 @@
+[package]
+name = "drift-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["http2"]
+http2 = ["dep:h2", "dep:hyper"]
+integration = []
+
+[dependencies]
+bytes = "1"
+flume = "0.11"
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+h2 = { version = "0.4", optional = true }
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+httparse = "1"
+hyper = { version = "1", default-features = false, features = ["client", "http1", "http2"], optional = true }
+parking_lot = "0.12"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = "1"
+thiserror = "2.0"
+tokio = { version = "1", default-features = false, features = ["sync", "io-util"] }
+webpki-roots = "1"
+fastwebsockets = { version = "0.10", features = ["unstable-split"] }
+sha1 = "0.10"
+base64 = "0.22"
+async-compression = { version = "0.4", features = ["tokio", "gzip", "brotli"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+# tokio/net pulls in mio which is unsupported on wasm32 – gate here.
+tokio = { version = "1", default-features = false, features = ["net"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+ring = { version = "*", features = ["wasm32_unknown_unknown_js"] }
+rustls-pki-types = { version = "1", features = ["web"] }
+# TLS-over-wisp on wasm32: futures-rustls works without tokio-rustls's
+# tokio-net dependencies, and tokio-util's compat adapter bridges
+# WispStreamIo (tokio-io) to futures-io in both directions.
+futures-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
+web-sys = { version = "0.3", features = [
+    "BinaryType",
+    "CloseEvent",
+    "ErrorEvent",
+    "Event",
+    "MessageEvent",
+    "MessagePort",
+    "WebSocket",
+] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time", "net", "io-util"] }
+rcgen = "0.13"
+drift-test-support = { path = "../drift-test-support" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
