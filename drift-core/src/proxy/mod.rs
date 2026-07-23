@@ -61,8 +61,8 @@ pub enum ProxyKind {
 ///   1. Caller has already opened a byte stream to `p0.host:p0.port`.
 ///   2. This function negotiates `p0` to reach `p1.host:p1.port`.
 ///   3. Then negotiates `p1` (using the same stream) to reach `p2.host:p2.port`.
-///   ...
-///   N+1. Negotiates `pN` to reach `H:P`.
+///      ...
+///      N+1. Negotiates `pN` to reach `H:P`.
 ///
 /// After success, the stream is a raw tunnel to `H:P`.
 ///
@@ -96,11 +96,11 @@ where
                 negotiate_socks5(stream, next_host, next_port, cur.auth.as_ref()).await?;
             }
             ProxyKind::Socks4 => {
-                let user = extract_user(&cur.auth);
+                let user = extract_user(cur.auth.as_ref());
                 negotiate_socks4(stream, Socks4Variant::V4, next_host, next_port, &user).await?;
             }
             ProxyKind::Socks4a => {
-                let user = extract_user(&cur.auth);
+                let user = extract_user(cur.auth.as_ref());
                 negotiate_socks4(stream, Socks4Variant::V4a, next_host, next_port, &user).await?;
             }
             ProxyKind::HttpConnect => {
@@ -111,7 +111,7 @@ where
     Ok(())
 }
 
-fn extract_user(auth: &Option<ProxyAuth>) -> String {
+fn extract_user(auth: Option<&ProxyAuth>) -> String {
     match auth {
         Some(ProxyAuth::UserPassword { user, .. }) => user.clone(),
         None => String::new(),

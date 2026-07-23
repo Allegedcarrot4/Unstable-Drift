@@ -3,7 +3,7 @@
 //!
 //! Values come directly from the Wisp v2.1 spec
 //! (`/home/amplify/Projects/NightShade/wisp-protocol/protocol.md`).
-//! Cross-verified against MoonBeam's TypeScript implementation
+//! Cross-verified against `MoonBeam`'s TypeScript implementation
 //! (`src/wisp-types.ts`) for wire compatibility.
 
 /// Packet type identifiers (spec §"Packet Types").

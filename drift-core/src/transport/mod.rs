@@ -2,8 +2,8 @@
 //!
 //! A `WispTransport` is a bidirectional, boundary-preserving byte channel.
 //! Every `send(bytes)` results in exactly one framed message on the wire;
-//! every `recv()` returns exactly one complete message. WebSockets fit
-//! this shape naturally; MessagePort with `postMessage` does too.
+//! every `recv()` returns exactly one complete message. `WebSockets` fit
+//! this shape naturally; `MessagePort` with `postMessage` does too.
 //!
 //! **Concurrency model:** implementations must be safe for one concurrent
 //! `send` and one concurrent `recv`. Multiple concurrent `send`s or
@@ -68,7 +68,7 @@ pub trait WispTransport: Send + Sync {
     ///
     /// - `Closed` if the transport has been closed.
     /// - `Io` on underlying transport failure.
-    fn send<'a>(&'a self, packet: Vec<u8>) -> BoxFuture<'a, Result<(), TransportError>>;
+    fn send(&self, packet: Vec<u8>) -> BoxFuture<'_, Result<(), TransportError>>;
 
     /// Receive the next inbound wisp packet.
     ///
@@ -76,7 +76,7 @@ pub trait WispTransport: Send + Sync {
     ///
     /// - `Closed` if the transport is closed (peer or local).
     /// - `Io` / `Framing` on transport-layer trouble.
-    fn recv<'a>(&'a self) -> BoxFuture<'a, Result<Bytes, TransportError>>;
+    fn recv(&self) -> BoxFuture<'_, Result<Bytes, TransportError>>;
 
     /// Signal end-of-transport. Idempotent.
     ///
@@ -84,12 +84,12 @@ pub trait WispTransport: Send + Sync {
     ///
     /// - `Io` on trouble sending the close frame. If the transport was
     ///   already closed, returns `Ok(())`.
-    fn close<'a>(&'a self) -> BoxFuture<'a, Result<(), TransportError>>;
+    fn close(&self) -> BoxFuture<'_, Result<(), TransportError>>;
 
     /// Cheap synchronous check: is the transport currently closed?
     ///
     /// Default returns `false`. Real implementations backed by a WebSocket
-    /// or MessagePort should override to expose their `readyState`.
+    /// or `MessagePort` should override to expose their `readyState`.
     fn is_closed(&self) -> bool {
         false
     }

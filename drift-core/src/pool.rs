@@ -23,6 +23,9 @@ impl ConnectionPool {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn get(&self, host: &str, port: u16) -> Option<Box<dyn IoStream>> {
         let mut map = self.inner.lock().unwrap();
         let key = (host.to_string(), port);
@@ -36,6 +39,9 @@ impl ConnectionPool {
         stream
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn put(&self, host: &str, port: u16, stream: Box<dyn IoStream>) {
         let mut map = self.inner.lock().unwrap();
         let key = (host.to_string(), port);
@@ -48,6 +54,9 @@ impl ConnectionPool {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn cleanup(&self) {
         let mut map = self.inner.lock().unwrap();
         let now = Instant::now();

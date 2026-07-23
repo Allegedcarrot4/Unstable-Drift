@@ -19,8 +19,9 @@ use crate::proxy::Proxy;
 use crate::wisp::Mux;
 
 /// HTTP method for the request represented by a `WispHandle`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Method {
+    #[default]
     Get,
     Post,
     Put,
@@ -47,15 +48,9 @@ impl Method {
     }
 }
 
-impl Default for Method {
-    fn default() -> Self {
-        Method::Get
-    }
-}
-
 /// Table-driven option key for `WispHandle::set_option`. One variant per
 /// option we support. Matches libcurl's `CURLOPT_*` naming shape but with
-/// Rust-idiomatic PascalCase.
+/// Rust-idiomatic `PascalCase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Opt {
     // TLS
@@ -152,7 +147,7 @@ impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> IoStream fo
 /// Phase 1 exposes only the URL/method/headers/body setters + option
 /// sub-struct setters. Table-driven `set_option(key, value)` fallback lands
 /// in Task 25.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WispHandle {
     url: Option<String>,
     method: Method,
@@ -188,6 +183,7 @@ impl std::fmt::Debug for WispHandle {
             .field("general", &self.general)
             .field("mux", &self.mux.as_ref().map(|_| "<Mux>"))
             .field("pool", &self.pool.as_ref().map(|_| "<Pool>"))
+            .field("proxy_chain", &self.proxy_chain)
             .finish()
     }
 }
@@ -319,24 +315,23 @@ impl WispHandle {
     /// - `Error::Config` if the value variant doesn't match the option's
     ///   expected type.
     pub fn set_option(&mut self, key: Opt, value: OptValue) -> Result<()> {
-        use OptValue::*;
         match (key, value) {
-            (Opt::TlsVerifyPeer, Bool(b)) => self.tls.verify_peer = b,
-            (Opt::TlsVerifyHost, Bool(b)) => self.tls.verify_host = b,
-            (Opt::TlsMinVersion, TlsVersion(v)) => self.tls.min_version = v,
-            (Opt::TlsMaxVersion, TlsVersion(v)) => self.tls.max_version = v,
-            (Opt::HttpFollowRedirects, Bool(b)) => self.http.follow_redirects = b,
-            (Opt::HttpMaxRedirects, U32(n)) => self.http.max_redirects = n,
-            (Opt::TcpNodelay, Bool(b)) => self.tcp.nodelay = b,
-            (Opt::TcpKeepalive, Bool(b)) => self.tcp.keepalive = b,
-            (Opt::TimeoutTotal, Duration(d)) => self.timeouts.total = Some(d),
-            (Opt::TimeoutTotal, None) => self.timeouts.total = Option::None,
-            (Opt::TimeoutConnect, Duration(d)) => self.timeouts.connect = d,
-            (Opt::CookiesEnabled, Bool(b)) => self.cookies.enabled = b,
-            (Opt::UserAgent, String(s)) => self.general.user_agent = s,
-            (Opt::Verbose, Bool(b)) => self.general.verbose = b,
-            (Opt::MaxResponseSize, U64(n)) => self.general.max_response_size = Some(n),
-            (Opt::MaxResponseSize, None) => self.general.max_response_size = Option::None,
+            (Opt::TlsVerifyPeer, OptValue::Bool(b)) => self.tls.verify_peer = b,
+            (Opt::TlsVerifyHost, OptValue::Bool(b)) => self.tls.verify_host = b,
+            (Opt::TlsMinVersion, OptValue::TlsVersion(v)) => self.tls.min_version = v,
+            (Opt::TlsMaxVersion, OptValue::TlsVersion(v)) => self.tls.max_version = v,
+            (Opt::HttpFollowRedirects, OptValue::Bool(b)) => self.http.follow_redirects = b,
+            (Opt::HttpMaxRedirects, OptValue::U32(n)) => self.http.max_redirects = n,
+            (Opt::TcpNodelay, OptValue::Bool(b)) => self.tcp.nodelay = b,
+            (Opt::TcpKeepalive, OptValue::Bool(b)) => self.tcp.keepalive = b,
+            (Opt::TimeoutTotal, OptValue::Duration(d)) => self.timeouts.total = Some(d),
+            (Opt::TimeoutTotal, OptValue::None) => self.timeouts.total = Option::None,
+            (Opt::TimeoutConnect, OptValue::Duration(d)) => self.timeouts.connect = d,
+            (Opt::CookiesEnabled, OptValue::Bool(b)) => self.cookies.enabled = b,
+            (Opt::UserAgent, OptValue::String(s)) => self.general.user_agent = s,
+            (Opt::Verbose, OptValue::Bool(b)) => self.general.verbose = b,
+            (Opt::MaxResponseSize, OptValue::U64(n)) => self.general.max_response_size = Some(n),
+            (Opt::MaxResponseSize, OptValue::None) => self.general.max_response_size = Option::None,
             (k, v) => {
                 return Err(Error::Config(format!(
                     "Opt::{k:?} does not accept value {v:?}"
@@ -389,6 +384,7 @@ impl WispHandle {
     /// - `Error::Config` if no URL is set or the URL is malformed.
     /// - `Error::NoTransport` if no URL is set.
     /// - `Error::Internal` (wrapping) for wisp/TLS/HTTP failures.
+    #[allow(clippy::too_many_lines, clippy::large_futures)]
     pub async fn perform(&mut self) -> Result<Response> {
         use crate::wisp::{StreamType, WispStream, WispStreamIo};
 
@@ -422,7 +418,18 @@ impl WispHandle {
             } else {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    if !self.proxy_chain.is_empty() {
+                    if self.proxy_chain.is_empty() {
+                        // Check the connection pool before opening a new TCP connection.
+                        raw = if let Some(pooled) = self.pool.as_ref().and_then(|p| p.get(&parsed.host, parsed.port)) {
+                            pooled
+                        } else {
+                            let addr = format!("{}:{}", parsed.host, parsed.port);
+                            let tcp = tokio::net::TcpStream::connect(&addr)
+                                .await
+                                .map_err(|e| Error::Internal(format!("tcp connect: {e}")))?;
+                            Box::new(tcp)
+                        };
+                    } else {
                         let first = &self.proxy_chain[0];
                         let addr = format!("{}:{}", first.host, first.port);
                         let mut tcp = tokio::net::TcpStream::connect(&addr)
@@ -432,18 +439,6 @@ impl WispHandle {
                             .await
                             .map_err(|e| Error::Internal(format!("proxy chain: {e}")))?;
                         raw = Box::new(tcp);
-                    } else {
-                        // Check the connection pool before opening a new TCP connection.
-                        raw = match self.pool.as_ref().and_then(|p| p.get(&parsed.host, parsed.port)) {
-                            Some(pooled) => pooled,
-                            None => {
-                                let addr = format!("{}:{}", parsed.host, parsed.port);
-                                let tcp = tokio::net::TcpStream::connect(&addr)
-                                    .await
-                                    .map_err(|e| Error::Internal(format!("tcp connect: {e}")))?;
-                                Box::new(tcp)
-                            }
-                        };
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -514,6 +509,7 @@ impl WispHandle {
 
     /// Open a TLS-wrapped stream (if https) and perform HTTP/1.1.
     /// Returns the response and the underlying stream (for potential pooling).
+    #[allow(clippy::large_futures)]
     async fn perform_http1_tls(
         &self,
         raw: Box<dyn IoStream>,
@@ -558,6 +554,7 @@ impl WispHandle {
     }
 }
 
+#[allow(clippy::large_futures)]
 async fn perform_http1<S>(
     mut stream: S,
     parsed: &ParsedUrl,
@@ -703,20 +700,17 @@ fn parse_url(s: &str) -> Result<ParsedUrl> {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, "/"),
     };
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((h, p)) => {
-            let port: u16 = p
-                .parse()
-                .map_err(|_| Error::Config(format!("bad port: {p}")))?;
-            (h.to_string(), port)
-        }
-        None => {
-            let default_port = match scheme {
-                UrlScheme::Http => 80,
-                UrlScheme::Https => 443,
-            };
-            (authority.to_string(), default_port)
-        }
+    let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
+        let port: u16 = p
+            .parse()
+            .map_err(|_| Error::Config(format!("bad port: {p}")))?;
+        (h.to_string(), port)
+    } else {
+        let default_port = match scheme {
+            UrlScheme::Http => 80,
+            UrlScheme::Https => 443,
+        };
+        (authority.to_string(), default_port)
     };
     if host.is_empty() {
         return Err(Error::Config(format!("empty host in URL: {s}")));
@@ -729,26 +723,7 @@ fn parse_url(s: &str) -> Result<ParsedUrl> {
     })
 }
 
-impl Default for WispHandle {
-    fn default() -> Self {
-        Self {
-            url: None,
-            method: Method::default(),
-            headers: vec![],
-            body: Body::default(),
-            tls: TlsOptions::default(),
-            http: HttpOptions::default(),
-            tcp: TcpOptions::default(),
-            timeouts: TimeoutOptions::default(),
-            cookies: CookieOptions::default(),
-            dns: DnsOptions::default(),
-            general: GeneralOptions::default(),
-            proxy_chain: Vec::new(),
-            mux: None,
-            pool: None,
-        }
-    }
-}
+
 
 #[cfg(test)]
 mod tests {

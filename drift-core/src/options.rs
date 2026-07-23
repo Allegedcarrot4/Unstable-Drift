@@ -97,6 +97,7 @@ pub enum RefererPolicy {
 
 /// TCP-level options.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TcpOptions {
     pub nodelay: bool,
     pub keepalive: bool,
@@ -116,7 +117,7 @@ impl Default for TcpOptions {
         Self {
             nodelay: true,
             keepalive: true,
-            keepidle: Duration::from_secs(60),
+            keepidle: Duration::from_mins(1),
             keepintvl: Duration::from_secs(30),
             keepcnt: 3,
             interface: None,
@@ -145,7 +146,7 @@ impl Default for TimeoutOptions {
             dns: Duration::from_secs(30),
             connect: Duration::from_secs(30),
             tls: Duration::from_secs(30),
-            first_byte: Duration::from_secs(60),
+            first_byte: Duration::from_mins(1),
         }
     }
 }
@@ -173,7 +174,7 @@ impl Default for DnsOptions {
     fn default() -> Self {
         Self {
             resolve_overrides: vec![],
-            cache_ttl: Duration::from_secs(60),
+            cache_ttl: Duration::from_mins(1),
             servers: vec![],
             prefer_ipv6: false,
         }

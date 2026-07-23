@@ -106,10 +106,7 @@ impl Ord for TlsVersion {
 }
 
 fn split_pem_certs(bytes: &[u8]) -> Vec<Vec<u8>> {
-    let text = match std::str::from_utf8(bytes) {
-        Ok(t) => t,
-        Err(_) => return Vec::new(),
-    };
+    let Ok(text) = std::str::from_utf8(bytes) else { return Vec::new() };
     let mut out = Vec::new();
     let mut current: Option<String> = None;
     for line in text.lines() {

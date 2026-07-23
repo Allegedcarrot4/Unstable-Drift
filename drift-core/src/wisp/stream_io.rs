@@ -91,10 +91,10 @@ impl WispStreamIo {
                     self.write_fut = None;
                     // After the in-flight future completes, check if more data
                     // was buffered while we were waiting, and kick off a new send.
-                    if !self.write_buf.is_empty() {
-                        self.start_send(cx)
-                    } else {
+                    if self.write_buf.is_empty() {
                         Poll::Ready(Ok(()))
+                    } else {
+                        self.start_send(cx)
                     }
                 }
                 Poll::Ready(Err(e)) => {
@@ -226,7 +226,7 @@ impl AsyncWrite for WispStreamIo {
 
         // Flush if the buffer exceeds the threshold.
         if me.write_buf.len() >= WRITE_FLUSH_THRESHOLD {
-            me.start_send(cx).map(|r| r.map(|_| n))
+            me.start_send(cx).map(|r| r.map(|()| n))
         } else {
             Poll::Ready(Ok(n))
         }

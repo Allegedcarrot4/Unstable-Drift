@@ -1,7 +1,7 @@
-//! SOCKS4 and SOCKS4a client.
+//! SOCKS4 and `SOCKS4a` client.
 //!
 //! SOCKS4:  target address is IPv4, IP resolved client-side.
-//! SOCKS4a: sets IP to 0.0.0.x (x nonzero), appends hostname, proxy
+//! `SOCKS4a`: sets IP to 0.0.0.x (x nonzero), appends hostname, proxy
 //!          resolves DNS.
 //!
 //! Wire format (client → server):
@@ -25,11 +25,11 @@ use super::ProxyError;
 pub enum Socks4Variant {
     /// Classic SOCKS4: caller resolves hostname to IPv4 before calling.
     V4,
-    /// SOCKS4a: proxy resolves hostname. `host` argument may be a name.
+    /// `SOCKS4a`: proxy resolves hostname. `host` argument may be a name.
     V4a,
 }
 
-/// Perform a SOCKS4 or SOCKS4a negotiation.
+/// Perform a SOCKS4 or `SOCKS4a` negotiation.
 ///
 /// For `V4`, `host` MUST be a dotted-quad IPv4 literal.
 /// For `V4a`, `host` may be any hostname.

@@ -24,14 +24,15 @@ pub async fn negotiate_http_connect<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    use std::fmt::Write;
     let mut req = String::new();
-    req.push_str(&format!("CONNECT {host}:{port} HTTP/1.1\r\n"));
-    req.push_str(&format!("Host: {host}:{port}\r\n"));
+    let _ = write!(req, "CONNECT {host}:{port} HTTP/1.1\r\n");
+    let _ = write!(req, "Host: {host}:{port}\r\n");
     req.push_str("Proxy-Connection: keep-alive\r\n");
     if let Some(ProxyAuth::UserPassword { user, pass }) = auth {
         let credentials = format!("{user}:{pass}");
         let encoded = base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes());
-        req.push_str(&format!("Proxy-Authorization: Basic {encoded}\r\n"));
+        let _ = write!(req, "Proxy-Authorization: Basic {encoded}\r\n");
     }
     req.push_str("\r\n");
     stream.write_all(req.as_bytes()).await?;

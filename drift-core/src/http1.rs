@@ -60,6 +60,7 @@ pub struct Http1Response {
 /// # Errors
 ///
 /// See `Http1Error` variants.
+#[allow(clippy::large_futures)]
 pub async fn send_request<S>(
     stream: &mut S,
     req: &Http1Request,
@@ -69,7 +70,7 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     // ---- Write the request ----
-    let wire = encode_request(req)?;
+    let wire = encode_request(req);
     stream.write_all(&wire).await?;
     stream.flush().await?;
 
@@ -85,8 +86,7 @@ where
     let connection_keep_alive = headers
         .get(http::header::CONNECTION)
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.to_lowercase() == "keep-alive")
-        .unwrap_or(false);
+        .is_some_and(|v| v.to_lowercase() == "keep-alive");
 
     Ok(Http1Response {
         version,
@@ -98,7 +98,7 @@ where
 }
 
 /// Encode a request into wire bytes.
-fn encode_request(req: &Http1Request) -> Result<Vec<u8>, Http1Error> {
+fn encode_request(req: &Http1Request) -> Vec<u8> {
     let mut out = Vec::with_capacity(256 + req.body.len());
     out.extend_from_slice(req.method.as_str().as_bytes());
     out.push(b' ');
@@ -106,7 +106,7 @@ fn encode_request(req: &Http1Request) -> Result<Vec<u8>, Http1Error> {
     out.extend_from_slice(b" HTTP/1.1\r\n");
 
     // Ensure Host header is present — caller's responsibility to include it.
-    for (name, value) in req.headers.iter() {
+    for (name, value) in &req.headers {
         out.extend_from_slice(name.as_str().as_bytes());
         out.extend_from_slice(b": ");
         out.extend_from_slice(value.as_bytes());
@@ -127,11 +127,12 @@ fn encode_request(req: &Http1Request) -> Result<Vec<u8>, Http1Error> {
     if !req.body.is_empty() {
         out.extend_from_slice(&req.body);
     }
-    Ok(out)
+    out
 }
 
 /// Read from `stream` into `buf` until we see `\r\n\r\n`. Returns the index
 /// (exclusive) where headers end — the byte AFTER the trailing `\n`.
+#[allow(clippy::large_stack_arrays)]
 async fn read_until_headers_end<S>(stream: &mut S, buf: &mut Vec<u8>) -> Result<usize, Http1Error>
 where
     S: AsyncRead + Unpin,
@@ -168,7 +169,6 @@ fn parse_response_head(head: &[u8]) -> Result<(Version, StatusCode, HeaderMap), 
     }
 
     let version = match resp.version {
-        Some(1) => Version::HTTP_11,
         Some(0) => Version::HTTP_10,
         _ => Version::HTTP_11,
     };
@@ -187,6 +187,7 @@ fn parse_response_head(head: &[u8]) -> Result<(Version, StatusCode, HeaderMap), 
 }
 
 /// Read the response body according to the headers.
+#[allow(clippy::large_futures)]
 async fn read_body<S>(
     stream: &mut S,
     headers: &HeaderMap,
@@ -201,9 +202,8 @@ where
         let val = te.to_str().unwrap_or("").to_lowercase();
         if val.contains("chunked") {
             return read_chunked_body(stream, prefix, max_bytes).await;
-        } else {
-            return Err(Http1Error::UnsupportedTransferEncoding(val));
         }
+        return Err(Http1Error::UnsupportedTransferEncoding(val));
     }
 
     // 2. content-length?
@@ -218,12 +218,14 @@ where
                 return Err(Http1Error::ResponseTooLarge);
             }
         }
+        #[allow(clippy::cast_possible_truncation)]
         return read_exact_body(stream, prefix, n as usize).await;
     }
 
     // 3. close-delimited (read to EOF).
     let mut out = Vec::with_capacity(prefix.len() + 65536);
     out.extend_from_slice(prefix);
+    #[allow(clippy::large_stack_arrays)]
     let mut tmp = [0u8; 65536];
     loop {
         let n = stream.read(&mut tmp).await?;
@@ -265,6 +267,7 @@ where
 }
 
 /// Decode a chunked body.
+#[allow(clippy::large_futures)]
 async fn read_chunked_body<S>(
     stream: &mut S,
     prefix: &[u8],
@@ -282,6 +285,7 @@ where
             if let Some(p) = find_crlf(&buf) {
                 break p;
             }
+            #[allow(clippy::large_stack_arrays)]
             let mut tmp = [0u8; 32768];
             let n = stream.read(&mut tmp).await?;
             if n == 0 {
@@ -365,7 +369,7 @@ mod tests {
             headers,
             body: Bytes::new(),
         };
-        let wire = encode_request(&req).unwrap();
+        let wire = encode_request(&req);
         let text = std::str::from_utf8(&wire).unwrap();
         assert!(text.starts_with("GET /hello HTTP/1.1\r\n"));
         assert!(text.contains("host: example.com\r\n"));
@@ -382,7 +386,7 @@ mod tests {
             headers,
             body: Bytes::from_static(b"hello"),
         };
-        let wire = encode_request(&req).unwrap();
+        let wire = encode_request(&req);
         let text = std::str::from_utf8(&wire).unwrap();
         assert!(text.contains("Content-Length: 5\r\n"));
         assert!(text.ends_with("\r\nhello"));

@@ -57,6 +57,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> WebSocketConn<S> {
     /// - `Upgrade` if the server rejects the handshake or returns a
     ///   malformed response.
     /// - `Io` on transport failure.
+    #[allow(clippy::cast_possible_truncation)]
     pub async fn connect(
         mut stream: S,
         host: &str,

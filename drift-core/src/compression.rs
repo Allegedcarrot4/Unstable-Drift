@@ -65,7 +65,7 @@ pub async fn decode_body(
 /// Which encodings to advertise in an outgoing `Accept-Encoding` header,
 /// per user's `Compression` option.
 ///
-/// Returns None if compression is disabled (Compression::None); otherwise
+/// Returns None if compression is disabled (`Compression::None`); otherwise
 /// a comma-separated header value.
 #[must_use]
 pub fn accept_encoding_header(mode: Compression) -> Option<&'static str> {

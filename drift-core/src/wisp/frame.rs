@@ -82,7 +82,7 @@ pub fn encode_data(data: &[u8]) -> Bytes {
 
 /// Encode a CONTINUE payload (spec §"CONTINUE").
 ///
-/// Payload: buffer_remaining (u32 LE) — number of DATA packets the server
+/// Payload: `buffer_remaining` (u32 LE) — number of DATA packets the server
 /// can still buffer for this stream.
 #[must_use]
 pub fn encode_continue(buffer_remaining: u32) -> Bytes {
@@ -97,7 +97,7 @@ pub fn encode_continue(buffer_remaining: u32) -> Bytes {
 
 /// Encode a CLOSE payload (spec §"CLOSE").
 ///
-/// Payload: close_reason (u8).
+/// Payload: `close_reason` (u8).
 #[must_use]
 pub fn encode_close(reason: CloseReason) -> Bytes {
     let mut buf = BytesMut::with_capacity(1);

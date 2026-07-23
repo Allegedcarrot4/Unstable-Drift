@@ -70,7 +70,7 @@ impl WebSocketTransport {
 }
 
 impl WispTransport for WebSocketTransport {
-    fn send<'a>(&'a self, packet: Vec<u8>) -> BoxFuture<'a, Result<(), TransportError>> {
+    fn send(&self, packet: Vec<u8>) -> BoxFuture<'_, Result<(), TransportError>> {
         Box::pin(async move {
             if *self.closed.lock() {
                 return Err(TransportError::Closed);
@@ -83,7 +83,7 @@ impl WispTransport for WebSocketTransport {
         })
     }
 
-    fn recv<'a>(&'a self) -> BoxFuture<'a, Result<Bytes, TransportError>> {
+    fn recv(&self) -> BoxFuture<'_, Result<Bytes, TransportError>> {
         Box::pin(async move {
             loop {
                 if *self.closed.lock() {
@@ -111,7 +111,7 @@ impl WispTransport for WebSocketTransport {
         })
     }
 
-    fn close<'a>(&'a self) -> BoxFuture<'a, Result<(), TransportError>> {
+    fn close(&self) -> BoxFuture<'_, Result<(), TransportError>> {
         Box::pin(async move {
             {
                 let mut c = self.closed.lock();
