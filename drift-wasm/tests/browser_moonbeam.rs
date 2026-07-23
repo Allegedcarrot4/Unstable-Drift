@@ -31,7 +31,11 @@ fn wisp_client_constructs_with_string_url() {
     let _client = WispClientJs::new(opts).expect("constructor should succeed");
 }
 
+/// Online test: requires a reachable Wisp server + httpbin.
+/// Marked `#[ignore]` so it doesn't block CI; run with
+/// `wasm-pack test --headless --chrome -- --ignored`.
 #[wasm_bindgen_test]
+#[ignore]
 async fn wisp_client_fetch() {
     drift_wasm::init();
     use drift_wasm::{WispClientJs, WispClientOptions};
@@ -45,12 +49,24 @@ async fn wisp_client_fetch() {
     assert_eq!(status, 200, "expected 200 from httpbin, got {status}");
 }
 
+/// Online test: requires a reachable Wisp server.
+/// Marked `#[ignore]` so it doesn't block CI; run with
+/// `wasm-pack test --headless --chrome -- --ignored`.
 #[wasm_bindgen_test]
-fn wisp_websocket_js_api() {
+#[ignore]
+async fn wisp_websocket_connect_echo() {
     drift_wasm::init();
-    use drift_wasm::WispClientOptions;
+    use drift_wasm::{WispClientJs, WispClientOptions};
     let opts = WispClientOptions::new(JsValue::from_str("wss://wisp.mercurywork.shop/"));
-    let _client = drift_wasm::WispClientJs::new(opts).expect("constructor should succeed");
+    let client = WispClientJs::new(opts).expect("constructor should succeed");
+    let result = client
+        .connect_websocket(
+            "wss://echo.websocket.org".to_string(),
+            JsValue::UNDEFINED,
+            JsValue::UNDEFINED,
+        )
+        .await;
+    assert!(result.is_ok(), "connectWebSocket should succeed, got: {result:?}");
 }
 
 #[wasm_bindgen_test]
