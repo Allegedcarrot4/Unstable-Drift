@@ -6,7 +6,7 @@ A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.
 
 ![Cargo build](https://img.shields.io/badge/build-passing-brightgreen)
 ![WASM](https://img.shields.io/badge/wasm-✓-blueviolet)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Apache%20License-blue)
 
 ## Features
 
