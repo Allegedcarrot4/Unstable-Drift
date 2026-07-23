@@ -167,5 +167,5 @@ Yes — `drift-wasm` targets `wasm32-unknown-unknown` and provides a Wisp client
 Yes. Pass multiple `--proxy` or `--socks5` flags, or call `handle.set_proxy_chain()` programmatically.
 
 ## License
+Apache License
 
-MIT
