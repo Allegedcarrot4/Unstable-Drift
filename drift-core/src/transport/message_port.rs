@@ -21,12 +21,6 @@ use web_sys::{MessageEvent, MessagePort};
 
 use super::{BoxFuture, TransportError, WispTransport};
 
-/// Signals internal to the transport.
-enum InboundSignal {
-    Data(Bytes),
-    Closed,
-}
-
 /// A wisp transport backed by a `MessagePort`.
 ///
 /// Take ownership of a port returned by (e.g.) `MoonbeamRelay.attach()`.
@@ -36,7 +30,7 @@ enum InboundSignal {
 /// boundary preservation, which is exactly what wisp needs.
 pub struct MessagePortTransport {
     port: MessagePort,
-    inbound_rx: Receiver<InboundSignal>,
+    inbound_rx: Receiver<Bytes>,
     closed: Mutex<bool>,
 
     // Keep the closure alive for the lifetime of the transport.
@@ -55,7 +49,7 @@ impl MessagePortTransport {
     /// - `Handshake` if the browser rejects `start()` (should never happen
     ///   with a valid port).
     pub fn new(port: MessagePort) -> Result<Arc<Self>, TransportError> {
-        let (inbound_tx, inbound_rx) = flume::unbounded::<InboundSignal>();
+        let (inbound_tx, inbound_rx) = flume::unbounded::<Bytes>();
 
         let inbound_tx_msg = inbound_tx.clone();
         let on_message = Closure::wrap(Box::new(move |ev: MessageEvent| {
@@ -64,7 +58,7 @@ impl MessagePortTransport {
                 let u8 = Uint8Array::new(buf);
                 let mut v = vec![0u8; u8.length() as usize];
                 u8.copy_to(&mut v);
-                let _ = inbound_tx_msg.send(InboundSignal::Data(Bytes::from(v)));
+                let _ = inbound_tx_msg.send(Bytes::from(v));
             }
             // Non-ArrayBuffer messages are unexpected; drop silently.
         }) as Box<dyn FnMut(MessageEvent)>);
@@ -103,11 +97,7 @@ impl WispTransport for MessagePortTransport {
     fn recv<'a>(&'a self) -> BoxFuture<'a, Result<Bytes, TransportError>> {
         Box::pin(async move {
             match self.inbound_rx.recv_async().await {
-                Ok(InboundSignal::Data(b)) => Ok(b),
-                Ok(InboundSignal::Closed) => {
-                    *self.closed.lock() = true;
-                    Err(TransportError::Closed)
-                }
+                Ok(b) => Ok(b),
                 Err(_) => Err(TransportError::Closed),
             }
         })

@@ -52,8 +52,8 @@ A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.
 
 ```toml
 [dependencies]
-drift = { git = "https://github.com/anomalyco/drift" }
-drift-core = { git = "https://github.com/anomalyco/drift" }
+drift = { git = "https://github.com/Allegedcarrot4/Unstable-Drift" }
+drift-core = { git = "https://github.com/Allegedcarrot4/Unstable-Drift" }
 ```
 
 ### WASM
@@ -65,7 +65,7 @@ wasm-pack build --target web drift-wasm
 Or install from npm:
 
 ```sh
-npm install @nightnetwork/drift
+npm install @unstable/drift
 ```
 
 ### CLI
@@ -116,7 +116,7 @@ async fn main() -> Result<(), drift::Error> {
 ### JavaScript / WASM
 
 ```js
-import { WispClientJs } from "@nightnetwork/drift";
+import { WispClientJs } from "@unstable/drift";
 
 const client = WispClientJs.new({ wispUrl: "wss://wisp.mercurywork.shop/" });
 const resp = await client.fetch("https://example.com");

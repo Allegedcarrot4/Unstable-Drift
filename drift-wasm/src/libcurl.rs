@@ -25,6 +25,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Response as WebResponse, ResponseInit};
 
+use crate::websocket::{parse_ws_url, spawn_websocket, WispWebSocketJs};
+
 /// Shared connection state — held inside `LibCurl` and reused across
 /// requests so a single wisp WebSocket + mux serves many concurrent
 /// fetches/streams.
@@ -136,7 +138,7 @@ impl LibCurlJs {
     /// Route wisp through a MoonBeam relay instead of a fresh WebSocket.
     ///
     /// `relay` must be a JS object with an `.attach()` method returning a
-    /// `MessagePort` (matches `@nightnetwork/moonbeam` v0.2+'s
+    /// `MessagePort` (matches `@unstable/moonbeam` v0.2+'s
     /// `MoonbeamRelay` shape). This is duck-typed to avoid a direct
     /// dependency on MoonBeam's package.
     ///
@@ -222,13 +224,14 @@ impl LibCurlJs {
     }
 
     /// The `WebSocket` class getter.
-    ///
-    /// Currently returns `undefined` — full WebSocket-over-wisp support
-    /// is a follow-up. DuskJS `net.ts` will error at construction time,
-    /// which is safe for feature-gated use.
     #[wasm_bindgen(getter, js_name = "WebSocket")]
     pub fn websocket_ctor(&self) -> JsValue {
-        JsValue::UNDEFINED
+        LIBCURL_LATEST_STATE.with(|slot| {
+            *slot.borrow_mut() = Some(self.state.clone());
+        });
+        let global = js_sys::global();
+        Reflect::get(&global, &JsValue::from_str("__drift_LibCurlWebSocket"))
+            .unwrap_or(JsValue::UNDEFINED)
     }
 
     /// `HTTPSession` getter. Returns a JS constructor function bound to
@@ -312,6 +315,79 @@ fn latest_state() -> Result<Rc<ConnectionState>, JsValue> {
             .clone()
             .ok_or_else(|| JsValue::from_str("no LibCurl instance available"))
     })
+}
+
+// ---- LibCurlWebSocket ----
+
+/// WebSocket-over-wisp for LibCurl. Same API surface as the browser's
+/// `WebSocket` constructor: `new LibCurlWebSocket(url, protocols)`.
+/// Requires a prior `LibCurl` instance to have been constructed (the
+/// most-recently-created one is used).
+#[wasm_bindgen(js_name = "LibCurlWebSocket")]
+pub struct LibCurlWebSocketJs {
+    inner: WispWebSocketJs,
+}
+
+#[wasm_bindgen(js_class = "LibCurlWebSocket")]
+impl LibCurlWebSocketJs {
+    #[wasm_bindgen(constructor)]
+    pub fn new(url: String, protocols: Option<Vec<String>>) -> Result<LibCurlWebSocketJs, JsValue> {
+        let state = latest_state()?;
+        let mux = state
+            .mux
+            .borrow()
+            .clone()
+            .ok_or_else(|| JsValue::from_str("LibCurlWebSocket: no wisp mux (call set_websocket first)"))?;
+        let (host, port, path) = parse_ws_url(&url)?;
+        let proto_vec = protocols.unwrap_or_default();
+        let inner = spawn_websocket(mux, host, port, path, proto_vec)?;
+        Ok(Self { inner })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn ready_state(&self) -> i32 {
+        self.inner.ready_state()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_onopen(&self, cb: JsValue) {
+        self.inner.set_onopen(cb);
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_onmessage(&self, cb: JsValue) {
+        self.inner.set_onmessage(cb);
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_onclose(&self, cb: JsValue) {
+        self.inner.set_onclose(cb);
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_onerror(&self, cb: JsValue) {
+        self.inner.set_onerror(cb);
+    }
+
+    #[wasm_bindgen]
+    pub fn send(&self, data: JsValue) {
+        self.inner.send(data);
+    }
+
+    #[wasm_bindgen]
+    pub fn close(&self, code: u16, reason: String) {
+        self.inner.close(code, reason);
+    }
+
+    #[wasm_bindgen(js_name = "addEventListener")]
+    pub fn add_event_listener(&self, event: String, cb: JsValue) {
+        self.inner.add_event_listener(event, cb);
+    }
+
+    #[wasm_bindgen(js_name = "removeEventListener")]
+    pub fn remove_event_listener(&self, event: String, cb: JsValue) {
+        self.inner.remove_event_listener(event, cb);
+    }
 }
 
 // ---- WispHTTPSession ----

@@ -5,6 +5,7 @@ pub mod custom;
 pub mod error;
 pub mod handle;
 pub mod http1;
+pub mod pool;
 #[cfg(feature = "http2")]
 pub mod http2;
 pub mod options;
@@ -15,7 +16,7 @@ pub mod wisp;
 pub mod ws;
 
 pub use error::{Error, Result};
-pub use handle::{Body, Header, Method, WispHandle, Opt, OptValue, Response};
+pub use handle::{Body, Header, IoStream, Method, WispHandle, Opt, OptValue, Response};
 
 /// Sanity function.
 #[must_use]

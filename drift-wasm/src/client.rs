@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use js_sys::{Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use web_sys::{Response as WebResponse, ResponseInit};
 
 use drift_core::transport::{MessagePortTransport, WebSocketWasmTransport, WispTransport};
 use drift_core::wisp::Mux;
@@ -96,9 +98,10 @@ impl WispClientJs {
         Ok(())
     }
 
-    /// Perform a fetch. Returns a Promise<Response-shaped-object>.
+    /// Perform a fetch. Returns a Promise<Response>.
+    /// `init` can contain `method`, `headers` (object), and `body` (string or Uint8Array).
     #[wasm_bindgen]
-    pub async fn fetch(&self, url: String, _init: JsValue) -> Result<JsValue, JsValue> {
+    pub async fn fetch(&self, url: String, init: JsValue) -> Result<WebResponse, JsValue> {
         self.ensure_connected().await?;
 
         let client = self
@@ -106,20 +109,68 @@ impl WispClientJs {
             .borrow()
             .clone()
             .ok_or_else(|| JsValue::from_str("WispClient: not initialized"))?;
-        let resp = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| JsValue::from_str(&format!("fetch: {e}")))?;
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &obj,
-            &JsValue::from_str("status"),
-            &JsValue::from_f64(f64::from(resp.status())),
-        )?;
-        let body_bytes = js_sys::Uint8Array::from(resp.bytes());
-        js_sys::Reflect::set(&obj, &JsValue::from_str("body"), &body_bytes)?;
-        Ok(obj.into())
+
+        // Parse method, headers, body from init.
+        let method_str = if !init.is_null() && !init.is_undefined() {
+            Reflect::get(&init, &JsValue::from_str("method"))
+                .ok()
+                .and_then(|v| v.as_string())
+        } else {
+            None
+        };
+
+        let mut req = match method_str.as_deref() {
+            Some("POST") => client.post(url),
+            Some("PUT") => client.put(url),
+            Some("DELETE") => client.delete(url),
+            _ => client.get(url),
+        };
+
+        if !init.is_null() && !init.is_undefined() {
+            if let Ok(headers) = Reflect::get(&init, &JsValue::from_str("headers")) {
+                if !headers.is_null() && !headers.is_undefined() {
+                    if let Some(obj) = headers.dyn_ref::<Object>() {
+                        let entries = Object::entries(obj);
+                        for i in 0..entries.length() {
+                            let pair = entries.get(i);
+                            if let Ok(arr) = pair.dyn_into::<js_sys::Array>() {
+                                let name = arr.get(0).as_string().unwrap_or_default();
+                                let value = arr.get(1).as_string().unwrap_or_default();
+                                if !name.is_empty() {
+                                    req = req.header(name, value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Ok(body) = Reflect::get(&init, &JsValue::from_str("body")) {
+                if !body.is_null() && !body.is_undefined() {
+                    if let Some(s) = body.as_string() {
+                        req = req.body_text(s);
+                    } else if let Ok(arr) = body.dyn_into::<Uint8Array>() {
+                        req = req.body_bytes(arr.to_vec());
+                    }
+                }
+            }
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            JsValue::from_str(&format!("fetch: {e}"))
+        })?;
+
+        let body_bytes = Uint8Array::from(resp.bytes());
+        let init = ResponseInit::new();
+        init.set_status(resp.status());
+        let hdrs = web_sys::Headers::new().map_err(|e| {
+            JsValue::from_str(&format!("Headers::new: {e:?}"))
+        })?;
+        for h in resp.headers() {
+            let _ = hdrs.set(&h.name, &h.value);
+        }
+        init.set_headers(&hdrs);
+        WebResponse::new_with_opt_buffer_source_and_init(Some(body_bytes.as_ref()), &init)
+            .map_err(|e| JsValue::from_str(&format!("Response::new: {e:?}")))
     }
 
     /// Connect a WebSocket over the wisp tunnel.

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
@@ -12,9 +13,11 @@ pub struct WispWebSocketJs {
 
 struct WispWebSocketInner {
     conn: Option<WebSocketConn<WispStreamIo>>,
+    onopen: Option<js_sys::Function>,
     onmessage: Option<js_sys::Function>,
     onclose: Option<js_sys::Function>,
     onerror: Option<js_sys::Function>,
+    listeners: HashMap<String, Vec<js_sys::Function>>,
     ready_state: i32,
 }
 
@@ -23,6 +26,15 @@ impl WispWebSocketJs {
     #[wasm_bindgen(getter)]
     pub fn ready_state(&self) -> i32 {
         self.inner.borrow().ready_state
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_onopen(&self, cb: JsValue) {
+        self.inner.borrow_mut().onopen = if cb.is_function() {
+            cb.dyn_into::<js_sys::Function>().ok()
+        } else {
+            None
+        };
     }
 
     #[wasm_bindgen(setter)]
@@ -77,6 +89,26 @@ impl WispWebSocketJs {
         });
     }
 
+    #[wasm_bindgen(js_name = "addEventListener")]
+    pub fn add_event_listener(&self, event: String, cb: JsValue) {
+        if let Some(f) = cb.dyn_into::<js_sys::Function>().ok() {
+            let mut inner = self.inner.borrow_mut();
+            inner.listeners.entry(event).or_default().push(f);
+        }
+    }
+
+    #[wasm_bindgen(js_name = "removeEventListener")]
+    pub fn remove_event_listener(&self, event: String, cb: JsValue) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(list) = inner.listeners.get_mut(&event) {
+            list.retain(|existing| {
+                let a: &JsValue = existing;
+                let b: &JsValue = &cb;
+                !js_sys::Object::is(a, b)
+            });
+        }
+    }
+
     #[wasm_bindgen]
     pub fn close(&self, code: u16, reason: String) {
         let inner = self.inner.clone();
@@ -94,6 +126,16 @@ impl WispWebSocketJs {
     }
 }
 
+fn fire_event(inner: &Arc<std::cell::RefCell<WispWebSocketInner>>, event: &str) {
+    let inner = inner.borrow();
+    if let Some(list) = inner.listeners.get(event) {
+        let evt = js_sys::Object::new();
+        for cb in list {
+            let _ = cb.call1(&JsValue::null(), &evt);
+        }
+    }
+}
+
 fn set_prop(obj: &js_sys::Object, key: &str, val: &JsValue) {
     let _ = js_sys::Reflect::set(obj, &JsValue::from_str(key), val);
 }
@@ -107,9 +149,11 @@ pub fn spawn_websocket(
 ) -> Result<WispWebSocketJs, JsValue> {
     let inner = Arc::new(std::cell::RefCell::new(WispWebSocketInner {
         conn: None,
+        onopen: None,
         onmessage: None,
         onclose: None,
         onerror: None,
+        listeners: HashMap::new(),
         ready_state: 0,
     }));
 
@@ -140,18 +184,35 @@ pub fn spawn_websocket(
                     let mut inner = inner_clone.borrow_mut();
                     inner.conn = Some(conn);
                     inner.ready_state = 1;
+                    if let Some(ref cb) = inner.onopen {
+                        let evt = js_sys::Object::new();
+                        let _ = cb.call1(&JsValue::null(), &evt);
+                    }
+                    drop(inner);
+                    fire_event(&inner_clone, "open");
                 }
 
                 let pump_inner = inner_clone.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     loop {
-                        let mut inner = pump_inner.borrow_mut();
-                        if inner.ready_state >= 2 {
-                            break;
-                        }
-                        let conn = inner.conn.as_mut().expect("conn missing after handshake");
-                        match conn.recv().await {
+                        // Take conn out of the RefCell so we don't hold
+                        // RefMut across .await, which would panic if send()
+                        // fires concurrently.
+                        let mut maybe_conn = {
+                            let mut inner = pump_inner.borrow_mut();
+                            if inner.ready_state >= 2 {
+                                break;
+                            }
+                            inner.conn.take()
+                        };
+                        let result = match maybe_conn.as_mut() {
+                            Some(conn) => conn.recv().await,
+                            None => break,
+                        };
+                        match result {
                             Ok(Some(WsMessage::Text(text))) => {
+                                let mut inner = pump_inner.borrow_mut();
+                                inner.conn = maybe_conn;
                                 if let Some(ref cb) = inner.onmessage {
                                     let evt = js_sys::Object::new();
                                     set_prop(&evt, "data", &JsValue::from_str(&text));
@@ -159,6 +220,8 @@ pub fn spawn_websocket(
                                 }
                             }
                             Ok(Some(WsMessage::Binary(data))) => {
+                                let mut inner = pump_inner.borrow_mut();
+                                inner.conn = maybe_conn;
                                 if let Some(ref cb) = inner.onmessage {
                                     let evt = js_sys::Object::new();
                                     let arr = js_sys::Uint8Array::from(data.as_ref());
@@ -167,20 +230,26 @@ pub fn spawn_websocket(
                                 }
                             }
                             Ok(None) => {
+                                let mut inner = pump_inner.borrow_mut();
                                 inner.ready_state = 3;
                                 if let Some(ref cb) = inner.onclose {
                                     let evt = js_sys::Object::new();
                                     let _ = cb.call1(&JsValue::null(), &evt);
                                 }
+                                drop(inner);
+                                fire_event(&pump_inner, "close");
                                 break;
                             }
                             Err(e) => {
+                                let mut inner = pump_inner.borrow_mut();
                                 inner.ready_state = 3;
                                 if let Some(ref cb) = inner.onerror {
                                     let evt = js_sys::Object::new();
                                     set_prop(&evt, "message", &JsValue::from_str(&e.to_string()));
                                     let _ = cb.call1(&JsValue::null(), &evt);
                                 }
+                                drop(inner);
+                                fire_event(&pump_inner, "error");
                                 break;
                             }
                         }
@@ -225,4 +294,43 @@ pub fn parse_ws_url(url: &str) -> Result<(String, u16, String), JsValue> {
         (host_port.to_string(), default_port)
     };
     Ok((host, port, path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_basic_ws_url() {
+        let (host, port, path) = parse_ws_url("ws://example.com/chat").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/chat");
+    }
+
+    #[test]
+    fn parse_wss_with_port() {
+        let (host, port, path) = parse_ws_url("wss://echo.example.com:9090").unwrap();
+        assert_eq!(host, "echo.example.com");
+        assert_eq!(port, 9090);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn parse_ws_no_path_defaults_to_root() {
+        let (host, port, path) = parse_ws_url("ws://localhost").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn parse_invalid_scheme_rejected() {
+        assert!(parse_ws_url("http://example.com").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_port_rejected() {
+        assert!(parse_ws_url("ws://example.com:abc").is_err());
+    }
 }

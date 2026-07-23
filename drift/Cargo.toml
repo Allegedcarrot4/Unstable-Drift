@@ -17,4 +17,4 @@ drift-core = { path = "../drift-core", default-features = false }
 thiserror = "2.0"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

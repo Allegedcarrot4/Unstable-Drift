@@ -12,6 +12,7 @@ use crate::options::{
     CookieOptions, DnsOptions, GeneralOptions, HttpOptions, TcpOptions,
     TimeoutOptions, TlsOptions,
 };
+use crate::pool::ConnectionPool;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::proxy::apply_chain;
 use crate::proxy::Proxy;
@@ -142,7 +143,7 @@ pub struct Response {
 
 /// Combined `AsyncRead + AsyncWrite + Send + Unpin` trait for boxing
 /// heterogeneous byte streams (wisp tunnel, TLS-wrapped, raw TCP).
-trait IoStream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
+pub trait IoStream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> IoStream for T {}
 
 /// The low-level libcurl-shaped handle. Configure via setters, then call
@@ -168,6 +169,7 @@ pub struct WispHandle {
     proxy_chain: Vec<Proxy>,
 
     mux: Option<Arc<Mux>>,
+    pool: Option<Arc<ConnectionPool>>,
 }
 
 impl std::fmt::Debug for WispHandle {
@@ -185,6 +187,7 @@ impl std::fmt::Debug for WispHandle {
             .field("dns", &self.dns)
             .field("general", &self.general)
             .field("mux", &self.mux.as_ref().map(|_| "<Mux>"))
+            .field("pool", &self.pool.as_ref().map(|_| "<Pool>"))
             .finish()
     }
 }
@@ -356,6 +359,11 @@ impl WispHandle {
         self.mux.as_ref()
     }
 
+    /// Attach a connection pool for reusing idle direct-TCP connections.
+    pub fn set_pool(&mut self, pool: Arc<ConnectionPool>) {
+        self.pool = Some(pool);
+    }
+
     /// Set a proxy chain for direct connections (when no mux is configured).
     pub fn set_proxy_chain(&mut self, chain: Vec<Proxy>) {
         self.proxy_chain = chain;
@@ -425,11 +433,17 @@ impl WispHandle {
                             .map_err(|e| Error::Internal(format!("proxy chain: {e}")))?;
                         raw = Box::new(tcp);
                     } else {
-                        let addr = format!("{}:{}", parsed.host, parsed.port);
-                        let tcp = tokio::net::TcpStream::connect(&addr)
-                            .await
-                            .map_err(|e| Error::Internal(format!("tcp connect: {e}")))?;
-                        raw = Box::new(tcp);
+                        // Check the connection pool before opening a new TCP connection.
+                        raw = match self.pool.as_ref().and_then(|p| p.get(&parsed.host, parsed.port)) {
+                            Some(pooled) => pooled,
+                            None => {
+                                let addr = format!("{}:{}", parsed.host, parsed.port);
+                                let tcp = tokio::net::TcpStream::connect(&addr)
+                                    .await
+                                    .map_err(|e| Error::Internal(format!("tcp connect: {e}")))?;
+                                Box::new(tcp)
+                            }
+                        };
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -441,8 +455,13 @@ impl WispHandle {
                 }
             }
 
-            // Wrap in TLS if https.
-            let resp = self.perform_http1_tls(raw, &parsed).await?;
+            // Wrap in TLS if https, perform HTTP/1.1, and get the stream back.
+            let (resp, stream) = self.perform_http1_tls(raw, &parsed).await?;
+
+            let keep_alive = resp.headers.iter().any(|h| {
+                h.name.eq_ignore_ascii_case("connection")
+                    && h.value.split(',').any(|v| v.trim().eq_ignore_ascii_case("keep-alive"))
+            });
 
             // Check for redirect.
             if remaining_redirects > 0 && is_redirect_status(resp.status) {
@@ -461,6 +480,19 @@ impl WispHandle {
                         if resp.status == 303 {
                             self.method = Method::Get;
                         }
+
+                        // For redirects to the same host:port, return the stream
+                        // to the pool so the next loop iteration can reuse it.
+                        let next_parsed = parse_url(&next)?;
+                        if keep_alive
+                            && next_parsed.host == parsed.host
+                            && next_parsed.port == parsed.port
+                        {
+                            if let Some(pool) = &self.pool {
+                                pool.put(&parsed.host, parsed.port, stream);
+                            }
+                        }
+
                         current_url = next;
                         remaining_redirects -= 1;
                         continue;
@@ -469,16 +501,24 @@ impl WispHandle {
                 }
             }
 
+            // No redirect: return stream to pool if keep-alive.
+            if keep_alive {
+                if let Some(pool) = &self.pool {
+                    pool.put(&parsed.host, parsed.port, stream);
+                }
+            }
+
             return Ok(resp);
         }
     }
 
     /// Open a TLS-wrapped stream (if https) and perform HTTP/1.1.
+    /// Returns the response and the underlying stream (for potential pooling).
     async fn perform_http1_tls(
         &self,
         raw: Box<dyn IoStream>,
         parsed: &ParsedUrl,
-    ) -> Result<Response> {
+    ) -> Result<(Response, Box<dyn IoStream>)> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             if parsed.scheme == UrlScheme::Https {
@@ -490,7 +530,8 @@ impl WispHandle {
                     .connect(server_name, raw)
                     .await
                     .map_err(|e| Error::Internal(format!("tls handshake: {e}")))?;
-                return perform_http1(tls_stream, parsed, self).await;
+                let (resp, tls_stream) = perform_http1(tls_stream, parsed, self).await?;
+                return Ok((resp, Box::new(tls_stream)));
             }
             perform_http1(raw, parsed, self).await
         }
@@ -509,7 +550,8 @@ impl WispHandle {
                     .await
                     .map_err(|e| Error::Internal(format!("tls handshake: {e}")))?;
                 let tokio_tls = tls_stream.compat();
-                return perform_http1(tokio_tls, parsed, self).await;
+                let (resp, tokio_tls) = perform_http1(tokio_tls, parsed, self).await?;
+                return Ok((resp, Box::new(tokio_tls)));
             }
             perform_http1(raw, parsed, self).await
         }
@@ -517,10 +559,10 @@ impl WispHandle {
 }
 
 async fn perform_http1<S>(
-    stream: S,
+    mut stream: S,
     parsed: &ParsedUrl,
     handle: &WispHandle,
-) -> Result<Response>
+) -> Result<(Response, S)>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -577,7 +619,6 @@ where
         body: body_bytes,
     };
 
-    let mut stream = stream;
     let resp = send_request(&mut stream, &req, handle.general.max_response_size)
         .await
         .map_err(|e| Error::Internal(format!("http1: {e}")))?;
@@ -603,11 +644,14 @@ where
         });
     }
 
-    Ok(Response {
-        status: resp.status.as_u16(),
-        headers: out_headers,
-        body: final_body.to_vec(),
-    })
+    Ok((
+        Response {
+            status: resp.status.as_u16(),
+            headers: out_headers,
+            body: final_body.to_vec(),
+        },
+        stream,
+    ))
 }
 
 fn is_redirect_status(status: u16) -> bool {
@@ -701,6 +745,7 @@ impl Default for WispHandle {
             general: GeneralOptions::default(),
             proxy_chain: Vec::new(),
             mux: None,
+            pool: None,
         }
     }
 }

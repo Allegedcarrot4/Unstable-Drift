@@ -47,6 +47,9 @@ pub struct Http1Response {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: Bytes,
+    /// `true` if the response contained a `Connection: keep-alive` header,
+    /// indicating the underlying stream can be reused for subsequent requests.
+    pub connection_keep_alive: bool,
 }
 
 /// Send an HTTP/1.1 request on the given stream and read the full response.
@@ -79,11 +82,18 @@ where
     // ---- Read the body ----
     let body = read_body(stream, &headers, &buf[header_end..], max_response_bytes).await?;
 
+    let connection_keep_alive = headers
+        .get(http::header::CONNECTION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_lowercase() == "keep-alive")
+        .unwrap_or(false);
+
     Ok(Http1Response {
         version,
         status,
         headers,
         body,
+        connection_keep_alive,
     })
 }
 

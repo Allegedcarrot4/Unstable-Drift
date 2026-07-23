@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Unstable-Drift WASM example</title>
+</head>
+<body>
+  <h1>Unstable-Drift WASM Example</h1>
+
+  <section>
+    <h2>HTTP GET</h2>
+    <button id="fetchBtn">Fetch httpbin.org</button>
+    <pre id="fetchResult"></pre>
+  </section>
+
+  <section>
+    <h2>WebSocket echo</h2>
+    <button id="wsBtn">Connect &amp; echo</button>
+    <pre id="wsResult"></pre>
+  </section>
+
+  <script type="module">
+    import init, { WispClient, WispClientOptions } from "./drift_wasm.js";
+
+    async function run() {
+      await init();
+
+      const client = new WispClient(
+        new WispClientOptions("wss://wisp.mercurywork.shop/")
+      );
+
+      document.getElementById("fetchBtn").onclick = async () => {
+        try {
+          const resp = await client.fetch("https://httpbin.org/get");
+          const text = await resp.text();
+          document.getElementById("fetchResult").textContent = text;
+        } catch (e) {
+          document.getElementById("fetchResult").textContent = `Error: ${e}`;
+        }
+      };
+
+      document.getElementById("wsBtn").onclick = async () => {
+        try {
+          const ws = await client.connectWebSocket(
+            "wss://echo.websocket.org",
+            undefined,
+            undefined
+          );
+          const pre = document.getElementById("wsResult");
+          ws.onopen = () => {
+            pre.textContent += "OPENED\n";
+            ws.send("Hello from Unstable-Drift!");
+          };
+          ws.onmessage = (evt) => {
+            pre.textContent += `ECHO: ${evt.data}\n`;
+          };
+          ws.onclose = () => {
+            pre.textContent += "CLOSED\n";
+          };
+          ws.onerror = (evt) => {
+            pre.textContent += `ERROR: ${evt.message}\n`;
+          };
+        } catch (e) {
+          document.getElementById("wsResult").textContent = `Error: ${e}`;
+        }
+      };
+    }
+
+    run();
+  </script>
+</body>
+</html>

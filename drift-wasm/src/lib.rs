@@ -30,3 +30,14 @@ fn console_error_panic_hook_install() {
         web_sys::console::error_1(&JsValue::from_str(&msg));
     }));
 }
+
+/// Register WASM classes on `globalThis` so LibCurl getters can find them.
+#[wasm_bindgen(inline_js = r#"
+import { LibCurlWebSocket, WispHTTPSession } from "./drift_wasm.js";
+const g = typeof globalThis !== "undefined" ? globalThis : window;
+if (g) {
+    g.__drift_LibCurlWebSocket = LibCurlWebSocket;
+    g.__drift_HTTPSession = WispHTTPSession;
+}
+"#)]
+extern "C" {}

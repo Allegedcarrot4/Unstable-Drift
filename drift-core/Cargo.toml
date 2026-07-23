@@ -26,7 +26,7 @@ parking_lot = "0.12"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pki-types = "1"
 thiserror = "2.0"
-tokio = { version = "1", default-features = false, features = ["sync", "io-util"] }
+tokio = { version = "1", default-features = false, features = ["sync", "io-util", "time"] }
 webpki-roots = "1"
 fastwebsockets = { version = "0.10", features = ["unstable-split"] }
 sha1 = "0.10"
