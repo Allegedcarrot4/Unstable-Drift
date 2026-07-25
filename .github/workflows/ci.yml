@@ -72,3 +72,8 @@ jobs:
         with:
           provenance: true
           package: drift-wasm/pkg
+      - name: Publish to GitHub Packages
+        working-directory: drift-wasm/pkg
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+          npm publish --registry=https://npm.pkg.github.com
