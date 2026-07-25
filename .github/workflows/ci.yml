@@ -68,10 +68,24 @@ jobs:
         working-directory: drift-wasm/pkg
         run: |
           jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public"' package.json > tmp.json && mv tmp.json package.json
-      - name: Upgrade npm and publish
+      - name: Publish via OIDC exchange
         working-directory: drift-wasm/pkg
         run: |
-          npm install -g npm@latest
+          # Get OIDC token from GitHub with npm audience
+          OIDC_RESP=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm")
+          OIDC_TOKEN=$(echo "$OIDC_RESP" | jq -r '.value')
+          echo "Got OIDC token: ${OIDC_TOKEN:0:20}..."
+
+          # Exchange for npm session token
+          NPM_TOKEN=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"token\":\"$OIDC_TOKEN\"}" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/claims/exchange" | jq -r '.token')
+          echo "Got npm token: ${NPM_TOKEN:0:20}..."
+
+          # Configure auth and publish
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
           npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
