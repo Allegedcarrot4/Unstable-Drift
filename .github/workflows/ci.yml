@@ -68,15 +68,10 @@ jobs:
         working-directory: drift-wasm/pkg
         run: |
           jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public"' package.json > tmp.json && mv tmp.json package.json
-      - name: Debug OIDC env
-        run: |
-          echo "npm version: $(npm --version)"
-          echo "ID_TOKEN_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+set}"
-          echo "ID_TOKEN_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+set}"
-      - name: Publish to npm
+      - name: Upgrade npm and publish
         working-directory: drift-wasm/pkg
         run: |
-          npm login --registry=https://registry.npmjs.org --auth-type=oidc
+          npm install -g npm@latest
           npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
