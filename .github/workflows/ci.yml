@@ -68,10 +68,8 @@ jobs:
         working-directory: drift-wasm/pkg
         run: |
           jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public"' package.json > tmp.json && mv tmp.json package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 'latest'
-          registry-url: 'https://registry.npmjs.org'
+      - name: Check npm version
+        run: npm --version
       - name: Publish to npm
         working-directory: drift-wasm/pkg
         run: npm publish --provenance --access public
