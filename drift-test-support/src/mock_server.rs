@@ -62,6 +62,9 @@ impl MockWispServer {
     // ---- Scripting: server -> client ----
 
     /// Push an INFO packet on stream 0 with the given extensions.
+    ///
+    /// # Panics
+    /// Panics if the internal channel is closed.
     pub fn send_info(&self, extensions: &[ExtensionEntry]) {
         let payload = encode_info(extensions);
         let pkt = encode_packet_to_vec(PacketType::Info, HANDSHAKE_STREAM_ID, &payload);
@@ -69,6 +72,9 @@ impl MockWispServer {
     }
 
     /// Push a CONTINUE on stream 0 (post-handshake initial credit grant).
+    ///
+    /// # Panics
+    /// Panics if the internal channel is closed.
     pub fn send_handshake_continue(&self, buffer_size: u32) {
         let pkt = encode_packet_to_vec(
             PacketType::Continue,
@@ -79,6 +85,9 @@ impl MockWispServer {
     }
 
     /// Push a per-stream CONTINUE (credit refill).
+    ///
+    /// # Panics
+    /// Panics if the internal channel is closed.
     pub fn send_stream_continue(&self, stream_id: u32, buffer_remaining: u32) {
         let pkt = encode_packet_to_vec(
             PacketType::Continue,
@@ -89,12 +98,18 @@ impl MockWispServer {
     }
 
     /// Push a DATA packet on `stream_id`.
+    ///
+    /// # Panics
+    /// Panics if the internal channel is closed.
     pub fn send_data(&self, stream_id: u32, data: &[u8]) {
         let pkt = encode_packet_to_vec(PacketType::Data, stream_id, data);
         self.tx.send(pkt).expect("mock server: send_data failed");
     }
 
     /// Push a CLOSE for `stream_id`.
+    ///
+    /// # Panics
+    /// Panics if the internal channel is closed.
     pub fn send_close(&self, stream_id: u32, reason: CloseReason) {
         let pkt = encode_packet_to_vec(PacketType::Close, stream_id, &encode_close(reason));
         self.tx.send(pkt).expect("mock server: send_close failed");
@@ -108,7 +123,7 @@ impl MockWispServer {
     pub fn received(&self) -> Vec<ServerReceived> {
         let mut out = Vec::new();
         while let Ok(vec) = self.rx.try_recv() {
-            out.push(decode_one(Bytes::from(vec)));
+            out.push(decode_one(&Bytes::from(vec)));
         }
         out
     }
@@ -120,21 +135,21 @@ impl MockWispServer {
     /// - Returns `Err(())` on timeout.
     pub async fn recv_one(&self, timeout: Duration) -> Result<ServerReceived, ()> {
         match tokio::time::timeout(timeout, self.rx.recv_async()).await {
-            Ok(Ok(vec)) => Ok(decode_one(Bytes::from(vec))),
+            Ok(Ok(vec)) => Ok(decode_one(&Bytes::from(vec))),
             _ => Err(()),
         }
     }
 }
 
-fn decode_one(bytes: Bytes) -> ServerReceived {
-    match decode_packet(&bytes) {
+fn decode_one(bytes: &Bytes) -> ServerReceived {
+    match decode_packet(bytes) {
         Ok(pkt) => match pkt.packet_type {
             PacketType::Connect => match drift_core::wisp::decode_connect(pkt.payload) {
                 Ok(payload) => ServerReceived::Connect {
                     stream_id: pkt.stream_id,
                     payload,
                 },
-                Err(e) => raw_from(&bytes, e),
+                Err(e) => raw_from(bytes, &e),
             },
             PacketType::Data => ServerReceived::Data {
                 stream_id: pkt.stream_id,
@@ -145,28 +160,28 @@ fn decode_one(bytes: Bytes) -> ServerReceived {
                     stream_id: pkt.stream_id,
                     credit,
                 },
-                Err(e) => raw_from(&bytes, e),
+                Err(e) => raw_from(bytes, &e),
             },
             PacketType::Close => match drift_core::wisp::decode_close(pkt.payload) {
                 Ok(reason) => ServerReceived::Close {
                     stream_id: pkt.stream_id,
                     reason,
                 },
-                Err(e) => raw_from(&bytes, e),
+                Err(e) => raw_from(bytes, &e),
             },
             PacketType::Info => match drift_core::wisp::decode_info(pkt.payload) {
                 Ok(payload) => ServerReceived::Info {
                     stream_id: pkt.stream_id,
                     payload,
                 },
-                Err(e) => raw_from(&bytes, e),
+                Err(e) => raw_from(bytes, &e),
             },
         },
-        Err(e) => raw_from(&bytes, e),
+        Err(e) => raw_from(bytes, &e),
     }
 }
 
-fn raw_from(bytes: &Bytes, err: DecodeError) -> ServerReceived {
+fn raw_from(bytes: &Bytes, err: &DecodeError) -> ServerReceived {
     ServerReceived::Raw {
         bytes: bytes.clone(),
         err: err.to_string(),

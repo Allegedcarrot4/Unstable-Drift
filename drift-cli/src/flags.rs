@@ -19,6 +19,7 @@ use clap::Parser;
     version,
     long_about = None,
 )]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Args {
     /// The URL to request.
     pub url: String,

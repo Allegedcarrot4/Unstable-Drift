@@ -16,6 +16,7 @@ use drift_core::transport::{WebSocketTransport, WispTransport};
 use drift_core::wisp::Mux;
 
 #[tokio::main]
+#[allow(clippy::large_futures)]
 async fn main() -> ExitCode {
     let args = flags::Args::parse();
     match run(args).await {
@@ -27,6 +28,7 @@ async fn main() -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_lines, clippy::large_futures)]
 async fn run(args: flags::Args) -> Result<(), Box<dyn std::error::Error>> {
     // ---- Wisp transport (if --wisp is set) ----
     #[cfg(not(target_arch = "wasm32"))]
@@ -40,14 +42,9 @@ async fn run(args: flags::Args) -> Result<(), Box<dyn std::error::Error>> {
         let pump_mux = mux.clone();
         let pump_transport = transport;
         tokio::spawn(async move {
-            loop {
-                match pump_transport.recv().await {
-                    Ok(frame) => {
-                        if pump_mux.dispatch_inbound(frame).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
+            while let Ok(frame) = pump_transport.recv().await {
+                if pump_mux.dispatch_inbound(frame).await.is_err() {
+                    break;
                 }
             }
         });
@@ -130,9 +127,11 @@ async fn run(args: flags::Args) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // TLS options.
-    let mut tls = drift_core::options::TlsOptions::default();
-    tls.verify_peer = !args.insecure;
-    tls.verify_host = !args.insecure;
+    let mut tls = drift_core::options::TlsOptions {
+        verify_peer: !args.insecure,
+        verify_host: !args.insecure,
+        ..Default::default()
+    };
     if let Some(path) = args.cacert.as_deref() {
         tls.ca_bundle_path = Some(path.to_string());
     }

@@ -70,7 +70,7 @@ impl ClientTransport {
 }
 
 impl WispTransport for ClientTransport {
-    fn send<'a>(&'a self, packet: Vec<u8>) -> BoxFuture<'a, Result<(), TransportError>> {
+    fn send(&self, packet: Vec<u8>) -> BoxFuture<'_, Result<(), TransportError>> {
         Box::pin(async move {
             self.sent.lock().push(packet.clone());
             let _ = self.sent_tx.send_async(packet).await;
@@ -78,7 +78,7 @@ impl WispTransport for ClientTransport {
         })
     }
 
-    fn recv<'a>(&'a self) -> BoxFuture<'a, Result<Bytes, TransportError>> {
+    fn recv(&self) -> BoxFuture<'_, Result<Bytes, TransportError>> {
         Box::pin(async move {
             let vec: Vec<u8> = self
                 .inbound
@@ -89,7 +89,7 @@ impl WispTransport for ClientTransport {
         })
     }
 
-    fn close<'a>(&'a self) -> BoxFuture<'a, Result<(), TransportError>> {
+    fn close(&self) -> BoxFuture<'_, Result<(), TransportError>> {
         Box::pin(async move { Ok(()) })
     }
 

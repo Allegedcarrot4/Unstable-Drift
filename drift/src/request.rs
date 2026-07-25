@@ -52,6 +52,7 @@ impl RequestBuilder {
     /// - `Error::NoTransport` if the client has no attached mux.
     /// - `Error::Config` for malformed inputs.
     /// - `Error::Internal` for pre-execution setup failures.
+    #[allow(clippy::large_futures)]
     pub async fn send(self) -> Result<Response> {
         let mut handle = self.client.make_handle();
         handle.set_method(self.method);
