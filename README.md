@@ -29,18 +29,18 @@ A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.
 
 ```
 ┌──────────────────────────────────────────┐
-│              drift-cli (CLI)              │
+│              drift-cli (CLI)             │
 ├──────────────────────────────────────────┤
-│                drift                      │
-│   (high-level client, builder, handle)    │
+│                drift                     │
+│   (high-level client, builder, handle)   │
 ├──────────────────────────────────────────┤
-│              drift-core                   │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌─────────┐ │
-│  │ wisp │ │ HTTP │ │ TLS  │ │  Proxy  │ │
-│  │ proto│ │1.1/2 │ │      │ │ chain   │ │
-│  └──────┘ └──────┘ └──────┘ └─────────┘ │
+│              drift-core                  │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌─────────┐  │
+│  │ wisp │ │ HTTP │ │ TLS  │ │  Proxy  │  │
+│  │ proto│ │1.1/2 │ │      │ │ chain   │  │
+│  └──────┘ └──────┘ └──────┘ └─────────┘  │
 ├──────────────────────────────────────────┤
-│             drift-wasm                    │
+│             drift-wasm                   │
 │  (WASM bindings, WispClient, libcurl     │
 │   shim, WebSocket bridge)                │
 └──────────────────────────────────────────┘
