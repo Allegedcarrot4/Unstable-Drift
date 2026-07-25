@@ -68,10 +68,9 @@ jobs:
         working-directory: drift-wasm/pkg
         run: |
           jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public"' package.json > tmp.json && mv tmp.json package.json
-      - uses: JS-DevTools/npm-publish@v3
-        with:
-          provenance: true
-          package: drift-wasm/pkg
+      - name: Publish to npm
+        working-directory: drift-wasm/pkg
+        run: npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
         run: |
