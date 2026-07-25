@@ -71,10 +71,9 @@ jobs:
       - name: Publish to npm
         working-directory: drift-wasm/pkg
         run: |
-          echo "Checking OIDC env..."
-          echo "URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+PRESENT}"
-          echo "TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+PRESENT}"
-          echo "npm: $(npm --version)"
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm" | jq -r '.value')
+          echo "//registry.npmjs.org/:_authToken=$OIDC" > .npmrc
           npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
