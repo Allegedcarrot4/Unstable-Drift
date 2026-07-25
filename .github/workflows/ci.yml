@@ -67,32 +67,10 @@ jobs:
       - name: Create npm package.json
         working-directory: drift-wasm/pkg
         run: |
-          jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public"' package.json > tmp.json && mv tmp.json package.json
-      - name: Publish via OIDC exchange
+          jq '.name = "@allegedcarrot4/drift" | .repository.type = "git" | .repository.url = "git+https://github.com/Allegedcarrot4/Unstable-Drift.git" | .publishConfig.access = "public" | .publishConfig.provenance = true' package.json > tmp.json && mv tmp.json package.json
+      - name: Publish to npm
         working-directory: drift-wasm/pkg
-        run: |
-          # Get OIDC token from GitHub with npm audience
-          OIDC_RESP=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm")
-          OIDC_TOKEN=$(echo "$OIDC_RESP" | jq -r '.value')
-          echo "Got OIDC token: ${OIDC_TOKEN:0:20}..."
-
-          # Exchange for npm session token
-          EXCHANGE_RESP=$(curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"token\":\"$OIDC_TOKEN\"}" \
-            "https://registry.npmjs.org/-/npm/v1/oidc/claims/exchange")
-          echo "Exchange response: $EXCHANGE_RESP"
-          NPM_TOKEN=$(echo "$EXCHANGE_RESP" | jq -r '.token')
-
-          # Configure auth and publish if token received
-          if [ "$NPM_TOKEN" != "null" ] && [ -n "$NPM_TOKEN" ]; then
-            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-            npm publish --provenance --access public
-          else
-            echo "Failed to get npm token"
-            exit 1
-          fi
+        run: npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
         run: |
