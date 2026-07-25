@@ -71,7 +71,10 @@ jobs:
       - name: Publish to npm
         working-directory: drift-wasm/pkg
         run: |
-          npm adduser --registry=https://registry.npmjs.org
+          echo "Checking OIDC env..."
+          echo "URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+PRESENT}"
+          echo "TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+PRESENT}"
+          echo "npm: $(npm --version)"
           npm publish --provenance --access public
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
