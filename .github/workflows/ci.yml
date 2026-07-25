@@ -78,15 +78,21 @@ jobs:
           echo "Got OIDC token: ${OIDC_TOKEN:0:20}..."
 
           # Exchange for npm session token
-          NPM_TOKEN=$(curl -s -X POST \
+          EXCHANGE_RESP=$(curl -s -X POST \
             -H "Content-Type: application/json" \
             -d "{\"token\":\"$OIDC_TOKEN\"}" \
-            "https://registry.npmjs.org/-/npm/v1/oidc/claims/exchange" | jq -r '.token')
-          echo "Got npm token: ${NPM_TOKEN:0:20}..."
+            "https://registry.npmjs.org/-/npm/v1/oidc/claims/exchange")
+          echo "Exchange response: $EXCHANGE_RESP"
+          NPM_TOKEN=$(echo "$EXCHANGE_RESP" | jq -r '.token')
 
-          # Configure auth and publish
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm publish --provenance --access public
+          # Configure auth and publish if token received
+          if [ "$NPM_TOKEN" != "null" ] && [ -n "$NPM_TOKEN" ]; then
+            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+            npm publish --provenance --access public
+          else
+            echo "Failed to get npm token"
+            exit 1
+          fi
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
         run: |
