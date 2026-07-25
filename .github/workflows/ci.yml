@@ -17,8 +17,8 @@ jobs:
   test-native:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
       - name: Build
@@ -31,8 +31,8 @@ jobs:
   test-wasm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@v2
@@ -48,8 +48,8 @@ jobs:
     needs: [test-native, test-wasm]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@v2
