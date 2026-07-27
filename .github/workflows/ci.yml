@@ -71,8 +71,22 @@ jobs:
       - name: Publish to npm
         working-directory: drift-wasm/pkg
         run: |
-          npm adduser --registry=https://registry.npmjs.org
-          npm publish --access public
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm" | jq -r '.value')
+          # Exchange OIDC token for npm session token (with auth header)
+          NPM_TOKEN=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OIDC" \
+            -d "{\"token\":\"$OIDC\"}" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/claims/exchange" | jq -r '.token')
+          if [ "$NPM_TOKEN" = "null" ]; then
+            # Fallback: try direct OIDC as auth (package now exists)
+            echo "//registry.npmjs.org/:_authToken=$OIDC" > .npmrc
+            npm publish --access public
+          else
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
+            npm publish --access public
+          fi
       - name: Publish to GitHub Packages
         working-directory: drift-wasm/pkg
         run: |
