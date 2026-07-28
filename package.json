@@ -1,0 +1,15 @@
+{
+  "name": "@allegedcarrot4/unstable-drift",
+  "version": "1.0.0",
+  "description": "A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.1, HTTP/2, WebSocket, and raw TCP proxying over the Wisp protocol, with full TLS support and SOCKS/HTTP proxy chaining.",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
