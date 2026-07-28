@@ -21,7 +21,7 @@
 //! ```
 //!
 //! Note: `send()` requires a wisp transport wired up via `builder().mux(...)`.
-//! The end-to-end HTTP wiring over WispStream lands in a follow-up task
+//! The end-to-end HTTP wiring over `WispStream` lands in a follow-up task
 //! (spec Task 20.5); Phase 6 provides the shape.
 
 pub mod request;

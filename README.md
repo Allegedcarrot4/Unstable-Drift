@@ -6,7 +6,7 @@ A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.
 
 ![Cargo build](https://img.shields.io/badge/build-passing-brightgreen)
 ![WASM](https://img.shields.io/badge/wasm-✓-blueviolet)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Apache%20License-blue)
 
 ## Features
 
@@ -29,18 +29,18 @@ A high-performance Wisp network client for Rust and WASM. Drift provides HTTP/1.
 
 ```
 ┌──────────────────────────────────────────┐
-│              drift-cli (CLI)              │
+│              drift-cli (CLI)             │
 ├──────────────────────────────────────────┤
-│                drift                      │
-│   (high-level client, builder, handle)    │
+│                drift                     │
+│   (high-level client, builder, handle)   │
 ├──────────────────────────────────────────┤
-│              drift-core                   │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌─────────┐ │
-│  │ wisp │ │ HTTP │ │ TLS  │ │  Proxy  │ │
-│  │ proto│ │1.1/2 │ │      │ │ chain   │ │
-│  └──────┘ └──────┘ └──────┘ └─────────┘ │
+│              drift-core                  │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌─────────┐  │
+│  │ wisp │ │ HTTP │ │ TLS  │ │  Proxy  │  │
+│  │ proto│ │1.1/2 │ │      │ │ chain   │  │
+│  └──────┘ └──────┘ └──────┘ └─────────┘  │
 ├──────────────────────────────────────────┤
-│             drift-wasm                    │
+│             drift-wasm                   │
 │  (WASM bindings, WispClient, libcurl     │
 │   shim, WebSocket bridge)                │
 └──────────────────────────────────────────┘
@@ -167,5 +167,5 @@ Yes — `drift-wasm` targets `wasm32-unknown-unknown` and provides a Wisp client
 Yes. Pass multiple `--proxy` or `--socks5` flags, or call `handle.set_proxy_chain()` programmatically.
 
 ## License
+Apache License
 
-MIT
